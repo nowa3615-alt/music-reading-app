@@ -4,7 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>ピアノ譜読みトレーニング</title>
+<title>譜読みトレーニング</title>
+
+<!-- PWA設定 -->
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
 
 <style>
 body{
@@ -56,19 +60,18 @@ const noteNames = ["ド","レ","ミ","ファ","ソ","ラ","シ","ド"];
 
 let currentNotes = [];
 
-// 📱 サイズ調整
+// サイズ調整
 function resizeCanvas(){
   const rect = canvas.getBoundingClientRect();
   canvas.width = rect.width;
   canvas.height = 160;
 }
 
-// 五線＋ト音記号＋拍子
+// 五線
 function drawStaff(){
 
 ctx.clearRect(0,0,canvas.width,canvas.height);
 
-// 五線
 for(let i=0;i<5;i++){
 let y = 60 + i*10;
 ctx.beginPath();
@@ -81,7 +84,7 @@ ctx.stroke();
 ctx.font = "50px serif";
 ctx.fillText("𝄞", 10, 105);
 
-// 🎯 4/4（太くする）
+// 4/4（太く）
 ctx.font = "bold 22px sans-serif";
 ctx.fillText("4", 55, 75);
 ctx.fillText("4", 55, 95);
@@ -96,7 +99,7 @@ ctx.lineTo(x,100);
 ctx.stroke();
 }
 
-// 加線（ドのみ）
+// 加線
 function drawLedgerLines(x,pos){
 if(pos === 0){
 ctx.beginPath();
@@ -106,7 +109,7 @@ ctx.stroke();
 }
 }
 
-// 単体音符
+// 音符
 function drawSingleNote(x,pos,type){
 
 let y = notePositions[pos];
@@ -151,14 +154,13 @@ ctx.stroke();
 }
 }
 
-// 斜めビーム
+// ビーム
 function drawBeamedPair(n1,n2){
 
 let x1=n1.x, x2=n2.x;
 let y1=notePositions[n1.pos];
 let y2=notePositions[n2.pos];
 
-// 音符
 [n1,n2].forEach(n=>{
 ctx.save();
 ctx.translate(n.x,notePositions[n.pos]);
@@ -170,7 +172,6 @@ ctx.restore();
 drawLedgerLines(n.x,n.pos);
 });
 
-// 符尾＋ビーム
 let stem1=y1-30;
 let stem2=y2-30;
 
@@ -203,7 +204,7 @@ drawSingleNote(n.x,n.pos,n.type);
 }
 }
 
-// 音生成（音楽っぽい）
+// 音生成
 function generatePitchSequence(length,max){
 
 let phrase=[];
@@ -322,9 +323,8 @@ currentNotes=notes;
 drawNotesWithBeams(notes);
 }
 
-// 答え（上に固定）
+// 答え
 function showAnswer(){
-
 ctx.font="bold 14px sans-serif";
 ctx.fillStyle="blue";
 ctx.textAlign="center";
@@ -339,6 +339,13 @@ ctx.fillText(noteNames[n.pos], n.x, y);
 // 初期表示
 generate();
 window.addEventListener("resize", generate);
+
+// ⭐ PWA（オフライン対応）
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js')
+    .then(() => console.log('Service Worker 登録成功'))
+    .catch(err => console.log('SW失敗:', err));
+}
 
 </script>
 
