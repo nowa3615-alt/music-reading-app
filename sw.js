@@ -1,4 +1,4 @@
-const CACHE_NAME = "music-app-v1";
+const CACHE_NAME = "music-reading-cache-v1";
 
 const urlsToCache = [
   "./",
@@ -6,20 +6,41 @@ const urlsToCache = [
   "./manifest.json"
 ];
 
-// インストール時にキャッシュ
+
+// ==============================
+// インストール
+// ==============================
+
 self.addEventListener("install", event => {
+
   event.waitUntil(
+
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
+      .then(cache => {
+
+        return cache.addAll(urlsToCache);
+      })
   );
 });
 
-// リクエスト時（オフライン対応）
+
+// ==============================
+// キャッシュ取得
+// ==============================
+
 self.addEventListener("fetch", event => {
+
   event.respondWith(
+
     caches.match(event.request)
       .then(response => {
-        return response || fetch(event.request);
+
+        // キャッシュ優先
+        if(response){
+          return response;
+        }
+
+        return fetch(event.request);
       })
   );
 });
