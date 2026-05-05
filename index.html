@@ -73,6 +73,7 @@ canvas{
 
 <br><br>
 
+<button onclick="playMelody()">音を聴く</button>
 <button onclick="showAnswer()">答えを見る</button>
 <button onclick="startNewQuestion()">次のフレーズ</button>
 
@@ -92,6 +93,16 @@ const canvas = document.getElementById("score");
 const ctx = canvas.getContext("2d");
 
 const timerElement = document.getElementById("timer");
+
+
+// ========================================
+// Audio
+// ========================================
+
+const AudioContextClass =
+  window.AudioContext || window.webkitAudioContext;
+
+const audioCtx = new AudioContextClass();
 
 
 // ========================================
@@ -123,14 +134,53 @@ const CONFIG = {
 
 const NOTE_DATA = [
 
-  { name:"ド", y:110 },
-  { name:"レ", y:105 },
-  { name:"ミ", y:100 },
-  { name:"ファ", y:95 },
-  { name:"ソ", y:90 },
-  { name:"ラ", y:85 },
-  { name:"シ", y:80 },
-  { name:"ド", y:75 }
+  {
+    name:"ド",
+    y:110,
+    freq:261.63
+  },
+
+  {
+    name:"レ",
+    y:105,
+    freq:293.66
+  },
+
+  {
+    name:"ミ",
+    y:100,
+    freq:329.63
+  },
+
+  {
+    name:"ファ",
+    y:95,
+    freq:349.23
+  },
+
+  {
+    name:"ソ",
+    y:90,
+    freq:392.00
+  },
+
+  {
+    name:"ラ",
+    y:85,
+    freq:440.00
+  },
+
+  {
+    name:"シ",
+    y:80,
+    freq:493.88
+  },
+
+  {
+    name:"ド",
+    y:75,
+    freq:523.25
+  }
 ];
 
 let currentNotes = [];
@@ -239,14 +289,7 @@ function drawNoteHead(x,y){
 }
 
 
-// ========================================
-// 棒方向
-// ========================================
-
 function isStemUp(pos){
-
-  // ラまでは上向き
-  // シ以上は下向き
 
   return pos <= 5;
 }
@@ -360,6 +403,64 @@ function drawAllNotes(notes){
 
       drawQuarterNote(note);
     }
+  }
+}
+
+
+// ========================================
+// 音再生
+// ========================================
+
+function playTone(freq,duration,startTime){
+
+  const osc = audioCtx.createOscillator();
+
+  const gain = audioCtx.createGain();
+
+  osc.type = "triangle";
+
+  osc.frequency.value = freq;
+
+  osc.connect(gain);
+
+  gain.connect(audioCtx.destination);
+
+  gain.gain.setValueAtTime(0,startTime);
+
+  gain.gain.linearRampToValueAtTime(
+    0.2,
+    startTime + 0.01
+  );
+
+  gain.gain.linearRampToValueAtTime(
+    0,
+    startTime + duration
+  );
+
+  osc.start(startTime);
+
+  osc.stop(startTime + duration);
+}
+
+
+async function playMelody(){
+
+  await audioCtx.resume();
+
+  let startTime = audioCtx.currentTime;
+
+  for(const note of currentNotes){
+
+    const freq = NOTE_DATA[note.pos].freq;
+
+    const duration =
+      note.type === "eighth"
+      ? 0.22
+      : 0.4;
+
+    playTone(freq,duration,startTime);
+
+    startTime += duration + 0.05;
   }
 }
 
@@ -560,7 +661,11 @@ function drawQuestion(){
 
   drawAllNotes(currentNotes);
 
-  drawBarLine(CONFIG.noteStartX + CONFIG.beatWidth * 4 - 15);
+  drawBarLine(
+    CONFIG.noteStartX +
+    CONFIG.beatWidth * 4 -
+    15
+  );
 }
 
 
@@ -614,7 +719,6 @@ function startTimer(){
   const mode =
     document.getElementById("timeMode").value;
 
-  // ノーマルモード
   if(mode === "normal"){
 
     timerElement.textContent = "";
