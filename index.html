@@ -1,33 +1,55 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
+
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>譜読みトレーニング</title>
 
-<!-- PWA設定 -->
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 
 <style>
+
 body{
   font-family:sans-serif;
   text-align:center;
-  margin-top:20px;
+  margin:20px;
+  background:#ffffff;
 }
 
-button{
+h2{
+  margin-bottom:20px;
+}
+
+button,
+select{
   font-size:18px;
-  padding:10px 16px;
+  padding:10px 14px;
   margin:5px;
 }
 
 canvas{
   border:1px solid #ccc;
-  width:90vw;
+  width:95vw;
+  max-width:720px;
   height:auto;
+  background:white;
 }
+
+.controls{
+  margin-bottom:20px;
+}
+
+#timer{
+  font-size:32px;
+  font-weight:bold;
+  margin:10px;
+  color:#cc0000;
+  min-height:40px;
+}
+
 </style>
 </head>
 
@@ -35,316 +57,640 @@ canvas{
 
 <h2>ピアノ譜読みトレーニング</h2>
 
+<div class="controls">
+
 <select id="level">
-<option value="5">ド〜ソ</option>
-<option value="8">ド〜高いド</option>
-<option value="8_rhythm">ド〜高いド＋8分音符</option>
+  <option value="5">ド〜ソ</option>
+  <option value="8">ド〜高いド</option>
+  <option value="8_rhythm">ド〜高いド＋8分音符</option>
+</select>
+
+<select id="timeMode">
+  <option value="normal">ノーマルモード</option>
+  <option value="5">5秒モード</option>
+  <option value="3">3秒モード</option>
 </select>
 
 <br><br>
 
+<button onclick="showAnswer()">答えを見る</button>
+<button onclick="startNewQuestion()">次のフレーズ</button>
+
+</div>
+
+<div id="timer"></div>
+
 <canvas id="score"></canvas>
 
-<br><br>
-
-<button onclick="showAnswer()">答えを見る</button>
-<button onclick="generate()">次のフレーズ</button>
-
 <script>
+
+// ========================================
+// Canvas
+// ========================================
 
 const canvas = document.getElementById("score");
 const ctx = canvas.getContext("2d");
 
-const notePositions = [110,105,100,95,90,85,80,75];
-const noteNames = ["ド","レ","ミ","ファ","ソ","ラ","シ","ド"];
+const timerElement = document.getElementById("timer");
+
+
+// ========================================
+// 設定
+// ========================================
+
+const CONFIG = {
+
+  canvasHeight: 180,
+
+  staffTop: 60,
+  lineGap: 10,
+
+  noteStartX: 0,
+  beatWidth: 0,
+
+  answerY: 35,
+
+  stemLength: 30,
+
+  noteHeadWidth: 7,
+  noteHeadHeight: 5
+};
+
+
+// ========================================
+// 音情報
+// ========================================
+
+const NOTE_DATA = [
+
+  { name:"ド", y:110 },
+  { name:"レ", y:105 },
+  { name:"ミ", y:100 },
+  { name:"ファ", y:95 },
+  { name:"ソ", y:90 },
+  { name:"ラ", y:85 },
+  { name:"シ", y:80 },
+  { name:"ド", y:75 }
+];
 
 let currentNotes = [];
 
-// サイズ調整
+let timerInterval = null;
+
+let hiddenMode = false;
+
+
+// ========================================
+// リサイズ
+// ========================================
+
 function resizeCanvas(){
+
   const rect = canvas.getBoundingClientRect();
+
   canvas.width = rect.width;
-  canvas.height = 160;
+  canvas.height = CONFIG.canvasHeight;
+
+  CONFIG.noteStartX = canvas.width * 0.28;
+
+  CONFIG.beatWidth =
+    (canvas.width - CONFIG.noteStartX - 40) / 4;
 }
 
-// 五線
+
+// ========================================
+// 五線譜
+// ========================================
+
 function drawStaff(){
 
-ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
-for(let i=0;i<5;i++){
-let y = 60 + i*10;
-ctx.beginPath();
-ctx.moveTo(40,y);
-ctx.lineTo(canvas.width-20,y);
-ctx.stroke();
+  drawStaffLines();
+  drawTrebleClef();
+  drawTimeSignature();
 }
 
-// ト音記号
-ctx.font = "50px serif";
-ctx.fillText("𝄞", 10, 105);
+function drawStaffLines(){
 
-// 4/4（太く）
-ctx.font = "bold 22px sans-serif";
-ctx.fillText("4", 55, 75);
-ctx.fillText("4", 55, 95);
+  for(let i=0;i<5;i++){
 
+    const y = CONFIG.staffTop + i * CONFIG.lineGap;
+
+    ctx.beginPath();
+    ctx.moveTo(40,y);
+    ctx.lineTo(canvas.width - 20,y);
+    ctx.stroke();
+  }
 }
 
-// 小節線
+function drawTrebleClef(){
+
+  ctx.font = "52px serif";
+  ctx.fillText("𝄞", 15, 102);
+}
+
+function drawTimeSignature(){
+
+  ctx.font = "bold 22px sans-serif";
+
+  ctx.fillText("4", 62, 75);
+  ctx.fillText("4", 62, 95);
+}
+
 function drawBarLine(x){
-ctx.beginPath();
-ctx.moveTo(x,60);
-ctx.lineTo(x,100);
-ctx.stroke();
+
+  ctx.beginPath();
+
+  ctx.moveTo(x,60);
+  ctx.lineTo(x,100);
+
+  ctx.stroke();
 }
 
-// 加線
-function drawLedgerLines(x,pos){
-if(pos === 0){
-ctx.beginPath();
-ctx.moveTo(x-10,110);
-ctx.lineTo(x+10,110);
-ctx.stroke();
-}
-}
 
+// ========================================
 // 音符
-function drawSingleNote(x,pos,type){
+// ========================================
 
-let y = notePositions[pos];
+function drawNoteHead(x,y){
 
-drawLedgerLines(x,pos);
+  ctx.save();
 
-ctx.save();
-ctx.translate(x,y);
-ctx.rotate(-0.3);
-ctx.beginPath();
-ctx.ellipse(0,0,6,5,0,0,Math.PI*2);
-ctx.fill();
-ctx.restore();
+  ctx.translate(x,y);
 
-let up = y > 90;
+  ctx.rotate(-0.3);
 
-if(up){
-ctx.beginPath();
-ctx.moveTo(x+6,y);
-ctx.lineTo(x+6,y-30);
-ctx.stroke();
+  ctx.beginPath();
 
-if(type === "eighth"){
-ctx.beginPath();
-ctx.moveTo(x+6,y-30);
-ctx.lineTo(x+12,y-20);
-ctx.stroke();
+  ctx.ellipse(
+    0,
+    0,
+    CONFIG.noteHeadWidth,
+    CONFIG.noteHeadHeight,
+    0,
+    0,
+    Math.PI * 2
+  );
+
+  ctx.fill();
+
+  ctx.restore();
 }
 
-}else{
-ctx.beginPath();
-ctx.moveTo(x-6,y);
-ctx.lineTo(x-6,y+30);
-ctx.stroke();
 
-if(type === "eighth"){
-ctx.beginPath();
-ctx.moveTo(x-6,y+30);
-ctx.lineTo(x-12,y+20);
-ctx.stroke();
-}
-}
+// ========================================
+// 棒方向
+// ========================================
+
+function isStemUp(pos){
+
+  // ラまでは上向き
+  // シ以上は下向き
+
+  return pos <= 5;
 }
 
-// ビーム
-function drawBeamedPair(n1,n2){
 
-let x1=n1.x, x2=n2.x;
-let y1=notePositions[n1.pos];
-let y2=notePositions[n2.pos];
+function drawStem(x,y,pos){
 
-[n1,n2].forEach(n=>{
-ctx.save();
-ctx.translate(n.x,notePositions[n.pos]);
-ctx.rotate(-0.3);
-ctx.beginPath();
-ctx.ellipse(0,0,6,5,0,0,Math.PI*2);
-ctx.fill();
-ctx.restore();
-drawLedgerLines(n.x,n.pos);
-});
+  ctx.beginPath();
 
-let stem1=y1-30;
-let stem2=y2-30;
+  if(isStemUp(pos)){
 
-ctx.beginPath();
-ctx.moveTo(x1+6,y1);
-ctx.lineTo(x1+6,stem1);
-ctx.moveTo(x2+6,y2);
-ctx.lineTo(x2+6,stem2);
-ctx.stroke();
+    ctx.moveTo(x + 6, y);
+    ctx.lineTo(x + 6, y - CONFIG.stemLength);
 
-ctx.beginPath();
-ctx.moveTo(x1+6,stem1);
-ctx.lineTo(x2+6,stem2);
-ctx.lineWidth=4;
-ctx.stroke();
-ctx.lineWidth=1;
+  }else{
+
+    ctx.moveTo(x - 6, y);
+    ctx.lineTo(x - 6, y + CONFIG.stemLength);
+  }
+
+  ctx.stroke();
 }
 
-// 描画まとめ
-function drawNotesWithBeams(notes){
-for(let i=0;i<notes.length;i++){
-let n=notes[i];
 
-if(n.type==="eighth" && i<notes.length-1 && notes[i+1].type==="eighth"){
-drawBeamedPair(n,notes[i+1]);
-i++;
-}else{
-drawSingleNote(n.x,n.pos,n.type);
-}
-}
+function drawLedgerLine(x,pos){
+
+  if(pos !== 0) return;
+
+  const y = NOTE_DATA[pos].y;
+
+  ctx.beginPath();
+
+  ctx.moveTo(x - 10,y);
+  ctx.lineTo(x + 10,y);
+
+  ctx.stroke();
 }
 
-// 音生成
+
+function drawQuarterNote(note){
+
+  const y = NOTE_DATA[note.pos].y;
+
+  drawLedgerLine(note.x, note.pos);
+
+  drawNoteHead(note.x,y);
+
+  drawStem(note.x,y,note.pos);
+}
+
+
+function drawEighthPair(note1,note2){
+
+  const y1 = NOTE_DATA[note1.pos].y;
+  const y2 = NOTE_DATA[note2.pos].y;
+
+  drawLedgerLine(note1.x,note1.pos);
+  drawLedgerLine(note2.x,note2.pos);
+
+  drawNoteHead(note1.x,y1);
+  drawNoteHead(note2.x,y2);
+
+  const stemTop1 = y1 - CONFIG.stemLength;
+  const stemTop2 = y2 - CONFIG.stemLength;
+
+  ctx.beginPath();
+
+  ctx.moveTo(note1.x + 6, y1);
+  ctx.lineTo(note1.x + 6, stemTop1);
+
+  ctx.moveTo(note2.x + 6, y2);
+  ctx.lineTo(note2.x + 6, stemTop2);
+
+  ctx.stroke();
+
+  ctx.beginPath();
+
+  ctx.lineWidth = 4;
+
+  ctx.moveTo(note1.x + 6, stemTop1);
+  ctx.lineTo(note2.x + 6, stemTop2);
+
+  ctx.stroke();
+
+  ctx.lineWidth = 1;
+}
+
+
+// ========================================
+// 描画
+// ========================================
+
+function drawAllNotes(notes){
+
+  for(let i=0;i<notes.length;i++){
+
+    const note = notes[i];
+    const next = notes[i+1];
+
+    if(
+      note.type === "eighth" &&
+      next &&
+      next.type === "eighth"
+    ){
+
+      drawEighthPair(note,next);
+
+      i++;
+
+    }else{
+
+      drawQuarterNote(note);
+    }
+  }
+}
+
+
+// ========================================
+// 音楽っぽい音生成
+// ========================================
+
 function generatePitchSequence(length,max){
 
-let phrase=[];
-let current=Math.floor(Math.random()*max);
-phrase.push(current);
+  const sequence = [];
 
-let prevJump=0;
+  let current = Math.floor(Math.random() * max);
 
-for(let i=1;i<length;i++){
+  sequence.push(current);
 
-if(i===length-1){
-current=0;
-phrase.push(current);
-break;
+  let previousJump = 0;
+
+  for(let i=1;i<length;i++){
+
+    if(i === length - 1){
+
+      const endRand = Math.random();
+
+      if(endRand < 0.5){
+
+        current = 0;
+
+      }else if(endRand < 0.7){
+
+        current = 4;
+
+      }else if(endRand < 0.85){
+
+        current = 2;
+
+      }else{
+
+        current = Math.floor(Math.random() * max);
+      }
+
+      sequence.push(current);
+
+      break;
+    }
+
+    if(current === 6 && Math.random() < 0.7){
+
+      current = 7;
+
+      sequence.push(current);
+
+      continue;
+    }
+
+    if(previousJump !== 0){
+
+      current -= previousJump;
+
+      previousJump = 0;
+
+    }else{
+
+      const r = Math.random();
+
+      if(r < 0.7){
+
+        current += Math.random() < 0.5 ? -1 : 1;
+
+      }else if(r < 0.9){
+
+      }else{
+
+        const jump = Math.random() < 0.5 ? -2 : 2;
+
+        current += jump;
+
+        previousJump = jump;
+      }
+    }
+
+    if(current < 0){
+      current = 0;
+    }
+
+    if(current >= max){
+      current = max - 1;
+    }
+
+    sequence.push(current);
+  }
+
+  return sequence;
 }
 
-if(current===6 && Math.random()<0.7){
-current=7;
-phrase.push(current);
-continue;
-}
 
-if(prevJump!==0){
-current-=prevJump;
-prevJump=0;
-}else{
+// ========================================
+// リズム生成
+// ========================================
 
-let r=Math.random();
-
-if(r<0.7){
-current+=(Math.random()<0.5?-1:1);
-}else if(r<0.9){
-}else{
-let jump=(Math.random()<0.5?-2:2);
-current+=jump;
-prevJump=jump;
-}
-}
-
-if(current<0) current=0;
-if(current>=max) current=max-1;
-
-phrase.push(current);
-}
-
-return phrase;
-}
-
-// リズム
 function generateRhythm(){
-let rhythm=[];
-for(let i=0;i<4;i++){
-if(Math.random()<0.4){
-rhythm.push("eighth","eighth");
-}else{
-rhythm.push("quarter");
-}
-}
-return rhythm;
-}
 
-// メイン
-function generate(){
+  const rhythm = [];
 
-resizeCanvas();
-drawStaff();
+  for(let i=0;i<4;i++){
 
-let level=document.getElementById("level").value;
-let notes=[];
-let x=80;
-let beatWidth=70;
-let beatCount=0;
+    if(Math.random() < 0.4){
 
-if(level==="8_rhythm"){
+      rhythm.push("eighth");
+      rhythm.push("eighth");
 
-let rhythm=generateRhythm();
-let pitches=generatePitchSequence(rhythm.length,8);
+    }else{
 
-for(let i=0;i<rhythm.length;i++){
+      rhythm.push("quarter");
+    }
+  }
 
-if(rhythm[i]==="eighth" && rhythm[i+1]==="eighth"){
-
-notes.push({pos:pitches[i],x:x,type:"eighth"});
-notes.push({pos:pitches[i+1],x:x+beatWidth/2,type:"eighth"});
-
-i++;
-x+=beatWidth;
-beatCount++;
-
-}else{
-
-notes.push({pos:pitches[i],x:x,type:"quarter"});
-x+=beatWidth;
-beatCount++;
+  return rhythm;
 }
 
-if(beatCount===4){
-drawBarLine(x-10);
-beatCount=0;
+
+// ========================================
+// ノート生成
+// ========================================
+
+function createNotes(level){
+
+  const notes = [];
+
+  let x = CONFIG.noteStartX;
+
+  if(level === "8_rhythm"){
+
+    const rhythm = generateRhythm();
+
+    const pitches = generatePitchSequence(rhythm.length,8);
+
+    for(let i=0;i<rhythm.length;i++){
+
+      if(
+        rhythm[i] === "eighth" &&
+        rhythm[i+1] === "eighth"
+      ){
+
+        notes.push({
+          pos:pitches[i],
+          x:x,
+          type:"eighth"
+        });
+
+        notes.push({
+          pos:pitches[i+1],
+          x:x + CONFIG.beatWidth / 2,
+          type:"eighth"
+        });
+
+        i++;
+
+      }else{
+
+        notes.push({
+          pos:pitches[i],
+          x:x,
+          type:"quarter"
+        });
+      }
+
+      x += CONFIG.beatWidth;
+    }
+
+  }else{
+
+    const max = parseInt(level);
+
+    const pitches = generatePitchSequence(4,max);
+
+    for(let i=0;i<4;i++){
+
+      notes.push({
+        pos:pitches[i],
+        x:CONFIG.noteStartX + i * CONFIG.beatWidth,
+        type:"quarter"
+      });
+    }
+  }
+
+  return notes;
 }
+
+
+// ========================================
+// 問題表示
+// ========================================
+
+function drawQuestion(){
+
+  drawStaff();
+
+  drawAllNotes(currentNotes);
+
+  drawBarLine(CONFIG.noteStartX + CONFIG.beatWidth * 4 - 15);
 }
 
-}else{
 
-let max=parseInt(level);
-let pitches=generatePitchSequence(4,max);
+// ========================================
+// 問題を隠す
+// ========================================
 
-for(let i=0;i<4;i++){
-notes.push({pos:pitches[i],x:80+i*70,type:"quarter"});
+function hideQuestion(){
+
+  hiddenMode = true;
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  timerElement.textContent = "時間切れ！";
 }
 
-drawBarLine(80+4*70-10);
-}
 
-currentNotes=notes;
-drawNotesWithBeams(notes);
-}
+// ========================================
+// 答え表示
+// ========================================
 
-// 答え
 function showAnswer(){
-ctx.font="bold 14px sans-serif";
-ctx.fillStyle="blue";
-ctx.textAlign="center";
 
-let y=40;
+  drawQuestion();
 
-for(let n of currentNotes){
-ctx.fillText(noteNames[n.pos], n.x, y);
+  ctx.font = "bold 14px sans-serif";
+
+  ctx.fillStyle = "blue";
+
+  ctx.textAlign = "center";
+
+  for(const note of currentNotes){
+
+    ctx.fillText(
+      NOTE_DATA[note.pos].name,
+      note.x,
+      CONFIG.answerY
+    );
+  }
 }
+
+
+// ========================================
+// タイマー
+// ========================================
+
+function startTimer(){
+
+  clearInterval(timerInterval);
+
+  const mode =
+    document.getElementById("timeMode").value;
+
+  // ノーマルモード
+  if(mode === "normal"){
+
+    timerElement.textContent = "";
+
+    return;
+  }
+
+  let timeLeft = parseInt(mode);
+
+  timerElement.textContent = timeLeft;
+
+  timerInterval = setInterval(() => {
+
+    timeLeft--;
+
+    timerElement.textContent = timeLeft;
+
+    if(timeLeft <= 0){
+
+      clearInterval(timerInterval);
+
+      hideQuestion();
+    }
+
+  },1000);
 }
 
-// 初期表示
-generate();
-window.addEventListener("resize", generate);
 
-// ⭐ PWA（オフライン対応）
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js')
-    .then(() => console.log('Service Worker 登録成功'))
-    .catch(err => console.log('SW失敗:', err));
+// ========================================
+// 新問題
+// ========================================
+
+function startNewQuestion(){
+
+  hiddenMode = false;
+
+  resizeCanvas();
+
+  const level =
+    document.getElementById("level").value;
+
+  currentNotes = createNotes(level);
+
+  drawQuestion();
+
+  startTimer();
+}
+
+
+// ========================================
+// 初期化
+// ========================================
+
+startNewQuestion();
+
+window.addEventListener("resize", () => {
+
+  resizeCanvas();
+
+  if(!hiddenMode){
+
+    drawQuestion();
+  }
+});
+
+
+// ========================================
+// PWA
+// ========================================
+
+if("serviceWorker" in navigator){
+
+  navigator.serviceWorker
+    .register("sw.js")
+    .then(() => console.log("Service Worker 登録成功"))
+    .catch(err => console.log("SW失敗:", err));
 }
 
 </script>
